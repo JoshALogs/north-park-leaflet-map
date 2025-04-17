@@ -11,17 +11,69 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
      crossorigin=""></script>
+    <!-- Esri‑Leaflet Plugin -->
+    <script src="https://unpkg.com/esri-leaflet@3.0.15/dist/esri-leaflet.js"></script>
   </head>
   <body>
     <div id="map" style="width:100%; height:600px;"></div>
     <script>
-      // Center on North Park, San Diego
-      var map = L.map('map')
-        .setView([32.7408842, -117.1305877], 13);
-      // OpenStreetMap tiles
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      // 1) Base layers
+      var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
+      });
+  
+      var aerial = L.esri.imageMapLayer({
+        url: 'https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer',
+        opacity: 0.7,
+        useCors: false
+      });
+  
+      // 2) Initialize map with OSM default
+      var map = L.map('map', {
+        center: [32.7408842, -117.1305877],
+        zoom: 13,
+        layers: [osm]
+      });
+  
+      // 3) Layer control container
+      var baseMaps = {
+        "OpenStreetMap": osm,
+        "SANDAG Aerial": aerial
+      };
+  
+      // 4) Helper: color lookup by cpname
+      function getColor(name) {
+        var palette = [
+          '#e41a1c','#377eb8','#4daf4a','#984ea3',
+          '#ff7f00','#ffff33','#a65628','#f781bf','#999999'
+        ];
+        return palette[name.length % palette.length];
+      }
+  
+      // 5) Add Community Plans Feature Layer, styled by cpname
+      var communityLayer = L.esri.featureLayer({
+        url: 'https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0',
+        style: function(feature) {
+          return {
+            color: getColor(feature.properties.cpname),
+            weight: 2,
+            fillOpacity: 0.3
+          };
+        },
+        onEachFeature: function(feature, layer) {
+          layer.bindPopup('<strong>' +
+            feature.properties.cpname +
+            '</strong>');
+        }
+      }).addTo(map);  // add by default; omit .addTo(map) if you want it off initially :contentReference[oaicite:0]{index=0}
+  
+      // 6) Overlay collection for control
+      var overlayMaps = {
+        "Community Plans": communityLayer
+      };
+  
+      // 7) Add layers control (base + overlays)
+      L.control.layers(baseMaps, overlayMaps, { position: 'topright' }).addTo(map);
     </script>
   </body>
 </html>
