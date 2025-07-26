@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "EditorConfig.EditorConfig",
+    "ritwickdey.LiveServer",
+    "yzhang.markdown-all-in-one"
+  ],
+  "unwantedRecommendations": [
+    "HookyQR.beautify"
+  ]
+}

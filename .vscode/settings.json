@@ -1,0 +1,24 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  "editor.codeActionsOnSave": ["source.fixAll.eslint"],
+
+  "eslint.validate": ["javascript"],
+
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+
+  "editor.rulers": [100],
+  "prettier.requireConfig": true,
+
+  "files.associations": {
+    "*.geojson": "json"
+  },
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  }
+}
