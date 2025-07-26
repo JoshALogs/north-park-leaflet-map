@@ -1,3 +1,5 @@
+/* eslint no-console: "off" */
+
 /**
  * Leaflet bootstrap for the North Park web map.
  * - Initializes a map centered on North Park.
@@ -98,20 +100,91 @@ function addNorthParkBoundaryFromSANDAG(map) {
 }
 
 /**
+ * Create and add an ArcGIS FeatureServer overlay from a config entry.
+ * Reads url/where/fields/style/popup/fitBounds from the entry.
+ * @param {L.Map} map - Target map.
+ * @param {Object} entry - Overlay config.
+ * @param {string} entry.url - FeatureServer layer URL.
+ * @param {string} [entry.where="1=1"] - WHERE clause.
+ * @param {string[]} [entry.fields=["*"]] - Fields to request.
+ * @param {Object} [entry.style] - Leaflet Path style.
+ * @param {(props:Object)=>string} [entry.popup] - Popup HTML renderer.
+ * @param {boolean} [entry.fitBounds=true] - Fit to bounds on first load.
+ * @returns {L.esri.FeatureLayer} The created and added layer.
+ */
+function addFeatureServerOverlay(map, entry) {
+  console.debug("Creating FeatureLayer:", entry.name || entry.id, entry.url, entry.where);
+
+  const layer = L.esri.featureLayer({
+    url: entry.url,
+    where: entry.where ?? "1=1",
+    fields: entry.fields ?? ["*"],
+    style: () => entry.style || { color: "#3388ff", weight: 2, fillOpacity: 0.1 },
+    simplifyFactor: 0.5,
+    precision: 5,
+  });
+
+  if (typeof entry.popup === "function") {
+    layer.bindPopup((feat) => {
+      const props = feat?.feature?.properties || {};
+      return entry.popup(props);
+    });
+  }
+
+  layer.on("load", () => {
+    const count = layer.getLayers().length;
+    console.debug("FeatureLayer loaded:", entry.name || entry.id, "features:", count);
+  });
+
+  layer.on("error", (e) => console.error("FeatureLayer error:", e));
+
+  if (entry.fitBounds !== false) {
+    layer.once("load", () => {
+      try {
+        const b = layer.getBounds();
+        if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+      } catch (_e) {
+        /* no-op */
+      }
+    });
+  }
+
+  layer.addTo(map);
+  return layer;
+}
+
+/**
  * Entry point: set up the map when the DOM is ready.
  */
 (function bootstrap() {
-  const center = [32.745, -117.129];
-  const zoom = 14;
+  // Find the config, whether it’s on window or as a global binding.
+  const CONFIG =
+    (typeof window !== "undefined" && window.APP_CONFIG) ||
+    (typeof APP_CONFIG !== "undefined" ? APP_CONFIG : null);
 
-  const map = initMap("map", center, zoom);
+  if (!CONFIG) {
+    console.error("APP_CONFIG not found. Ensure config.js loads before main.js.");
+    return;
+  }
+
+  console.debug("APP_CONFIG overlays:", CONFIG.layers?.overlays?.length ?? 0);
+
+  const { map: mapCfg, layers, attribution } = CONFIG;
+
+  const map = initMap("map", mapCfg.center, mapCfg.zoom);
   const osm = addOsmBasemap(map);
 
-  const baseLayers = { OpenStreetMap: osm };
-  const overlays = {};
-  const layerControl = addLayerControl(map, baseLayers, overlays);
+  if (attribution) {
+    map.attributionControl.addAttribution(attribution);
+  }
 
-  // Add SANDAG North Park boundary and expose it in the control
-  const np = addNorthParkBoundaryFromSANDAG(map);
-  layerControl.addOverlay(np, "North Park Boundary");
+  const baseLayers = { OpenStreetMap: osm };
+  const layerControl = addLayerControl(map, baseLayers, {});
+
+  (layers?.overlays || []).forEach((entry) => {
+    if (entry.type === "featureServer") {
+      const lyr = addFeatureServerOverlay(map, entry);
+      layerControl.addOverlay(lyr, entry.name || entry.id || "Overlay");
+    }
+  });
 })();
