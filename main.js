@@ -83,13 +83,8 @@ function addNorthParkBoundaryFromSANDAG(map) {
   });
 
   // Fit to boundary once loaded.
-  layer.once("load", () => {
-    try {
-      const bounds = layer.getBounds();
-      if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
-    } catch (_e) {
-      /* no-op */
-    }
+  layer.on("load", () => {
+    console.debug("FeatureLayer loaded:", entry.name || entry.id);
   });
 
   // Credit the data source.

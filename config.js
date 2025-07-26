@@ -26,7 +26,7 @@ window.APP_CONFIG = {
         type: "featureServer",
         url: "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0",
         where: "cpname = 'NORTH PARK'",
-        fields: ["cpname"],
+        fields: ["objectid", "cpname"],
         name: "North Park Boundary",
         style: { color: "#0066ff", weight: 2, fillOpacity: 0.1 },
         /** @param {Record<string, any>} props */
