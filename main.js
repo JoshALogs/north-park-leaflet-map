@@ -127,8 +127,7 @@ function addFeatureServerOverlay(map, entry) {
   }
 
   layer.on("load", () => {
-    const count = layer.getLayers().length;
-    console.debug("FeatureLayer loaded:", entry.name || entry.id, "features:", count);
+    console.debug("FeatureLayer loaded:", entry.name || entry.id);
   });
 
   layer.on("error", (e) => console.error("FeatureLayer error:", e));
