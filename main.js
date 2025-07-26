@@ -19,7 +19,7 @@
 function initMap(containerId, center, zoom) {
   // Explicit options aid future maintenance.
   const map = L.map(containerId, {
-    zoomControl: true
+    zoomControl: true,
   }).setView(center, zoom);
 
   // Add a scale control for reference.
@@ -35,7 +35,7 @@ function initMap(containerId, center, zoom) {
 function addOsmBasemap(map) {
   const layer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
+    attribution: "&copy; OpenStreetMap contributors",
   });
   layer.addTo(map);
   return layer;
@@ -53,21 +53,65 @@ function addLayerControl(map, baseLayers, overlays) {
 }
 
 /**
+ * Add the North Park boundary from SANDAG's Community_Plan_SD feature layer.
+ * Source: https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0
+ * Fields include cpname (display field). We'll filter cpname='NORTH PARK'.
+ * @param {L.Map} map - Target map.
+ * @returns {L.esri.FeatureLayer} The added feature layer.
+ */
+function addNorthParkBoundaryFromSANDAG(map) {
+  const url =
+    "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0";
+  const where = "cpname = 'NORTH PARK'";
+
+  const layer = L.esri.featureLayer({
+    url,
+    where,
+    fields: ["cpname"], // request only what we need
+    style: () => ({ color: "#0066ff", weight: 2, fillOpacity: 0.1 }),
+    simplifyFactor: 0.5, // light server-side/generalization hints
+    precision: 5,
+  });
+
+  // Simple popup with plan name.
+  layer.bindPopup((feat) => {
+    const props = feat?.feature?.properties || {};
+    const name = props.cpname || "North Park";
+    return `<strong>${name}</strong>`;
+  });
+
+  // Fit to boundary once loaded.
+  layer.once("load", () => {
+    try {
+      const bounds = layer.getBounds();
+      if (bounds && bounds.isValid()) map.fitBounds(bounds, { padding: [20, 20] });
+    } catch (_e) {
+      /* no-op */
+    }
+  });
+
+  // Credit the data source.
+  map.attributionControl.addAttribution("Data: City of San Diego Planning Dept via SANDAG RDW");
+
+  layer.addTo(map);
+  return layer;
+}
+
+/**
  * Entry point: set up the map when the DOM is ready.
  */
 (function bootstrap() {
-  // North Park approximate center
   const center = [32.745, -117.129];
   const zoom = 14;
 
   const map = initMap("map", center, zoom);
   const osm = addOsmBasemap(map);
 
-  // Prepare for future overlays (we will add North Park boundary next).
   const baseLayers = { OpenStreetMap: osm };
   const overlays = {};
-  addLayerControl(map, baseLayers, overlays);
+  const layerControl = addLayerControl(map, baseLayers, overlays);
 
-  // Placeholder: future function to load North Park boundary (GeoJSON or Feature Service).
-  // loadNorthParkBoundary(map, overlays);
+  // Add SANDAG North Park boundary and expose it in the control
+  const np = addNorthParkBoundaryFromSANDAG(map);
+  layerControl.addOverlay(np, "North Park Boundary");
 })();
