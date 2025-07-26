@@ -1,0 +1,10 @@
+/* Page-level layout to let the map fill the viewport.
+   If embedded via <iframe>, control height on the iframe instead. */
+html, body {
+  height: 100%;
+  margin: 0;
+}
+#map {
+  height: 100%;
+  width: 100%;
+}
