@@ -28,11 +28,10 @@ function initMap(containerId, center, zoom) {
   const map = L.map(containerId, {
     zoomControl: true,
     keyboard: true,
+    preferCanvas: true, // render vectors on Canvas for stability at high zoom
   }).setView(center, zoom);
 
-  // Scale bar (both units)
   L.control.scale({ imperial: true, metric: true }).addTo(map);
-
   return map;
 }
 
@@ -189,9 +188,12 @@ function addFeatureServerOverlay(map, entry) {
         weight: entry.casing.weight != null ? Number(entry.casing.weight) : 7,
         opacity: entry.casing.opacity != null ? Number(entry.casing.opacity) : 1,
         fillOpacity: 0, // stroke-only underlay
+        smoothFactor: 0, // don’t oversimplify during projection
+        lineJoin: "round",
+        lineCap: "round",
       }),
-      simplifyFactor: 0.5,
-      precision: 5,
+      simplifyFactor: 0, // no simplification (prevents thin lines “disappearing”)
+      precision: 8, // higher coordinate precision reduces zoom artifacts
     });
   }
 
@@ -201,15 +203,32 @@ function addFeatureServerOverlay(map, entry) {
     where: entry.where ?? "1=1",
     fields: entry.fields ?? ["*"],
     attribution: entry.attribution || undefined,
-    style: () => entry.style || { color: "#3388ff", weight: 2, fillOpacity: 0.1 },
-    simplifyFactor: 0.5,
-    precision: 5,
+
+    // For the context CPAs only, force SVG rendering for crisp, stable strokes.
+    // (Everything else can keep Canvas via map's preferCanvas.)
+    ...(entry.id === "cpas-context" ? { renderer: SVG_RENDERER } : {}),
+
+    // Geometry fidelity (prevents thin lines dropping out at large scales)
+    simplifyFactor: 0,
+    precision: 8,
+
+    // Style: start from entry.style and add stroke-stability props.
+    // Note: fillOpacity defaults to 0 for boundaries.
+    style: () => ({
+      ...(entry.style || { color: "#3388ff", weight: 2 }),
+      fillOpacity: entry.style?.fillOpacity ?? 0,
+      smoothFactor: 0,
+      lineJoin: "round",
+      lineCap: "round",
+    }),
 
     // Called once per feature as it becomes a Leaflet layer
     onEachFeature: function onEachFeature(feature, lyr) {
+      // Track the Leaflet layer so we can refresh labels and force repaints later
       featureLayers.add(lyr);
+
+      // Bind a permanent tooltip if labeling is configured for this overlay
       if (entry.label) {
-        // Bind an empty tooltip now; content/visibility set in updateLabels()
         lyr.bindTooltip("", {
           permanent: true,
           direction: "center",
@@ -323,6 +342,15 @@ function addFeatureServerOverlay(map, entry) {
         /* no-op */
       }
     }
+    // Force a repaint + keep casing under stroke after zoom/pan
+    function ensureVisible() {
+      if (casingLayer?.bringToBack) casingLayer.bringToBack(); // keep underlay under
+      if (casingLayer?.redraw) casingLayer.redraw();
+      if (layer.redraw) layer.redraw();
+      if (layer.bringToFront) layer.bringToFront(); // and main stroke on top
+    }
+    map.on("zoomend moveend", ensureVisible);
+    layerGroup.on("remove", () => map.off("zoomend moveend", ensureVisible));
   });
 
   // Attach a contrast profile applicator (used on baselayerchange)
@@ -353,11 +381,11 @@ function addFeatureServerOverlay(map, entry) {
     // Context CPAs (enhance on imagery/dark)
     if (entry.id === "cpas-context") {
       if (profile === "imagery") {
-        layer.setStyle({ color: "#222222", weight: 2.5, opacity: 1, fillOpacity: 0 });
-        casingLayer?.setStyle({ color: "#ffffff", weight: 4, opacity: 0.9, fillOpacity: 0 });
+        layer.setStyle({ color: "#111827", weight: 3.0, opacity: 1, fillOpacity: 0 });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 5, opacity: 0.95, fillOpacity: 0 });
       } else {
-        layer.setStyle({ color: "#444444", weight: 1.5, opacity: 0.9, fillOpacity: 0 });
-        casingLayer?.setStyle({ color: "#ffffff", weight: 3, opacity: 0, fillOpacity: 0 });
+        layer.setStyle({ color: "#1f2937", weight: 2.25, opacity: 1, fillOpacity: 0 });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 4, opacity: 0.5, fillOpacity: 0 });
       }
     }
   };
@@ -384,6 +412,134 @@ const RepoCredit = L.Control.extend({
     return div;
   },
 });
+
+/** SVG renderer for layers that must remain crisp during zoom (context CPAs). */
+const SVG_RENDERER = L.svg({ padding: 0.5 });
+
+/**
+ * Draw the context CPAs (all except North Park) as static GeoJSON with
+ * a white casing underlay + dark stroke overlay. This avoids redraw
+ * artifacts seen with FeatureLayer on dark/imagery basemaps.
+ *
+ * @param {L.Map} map
+ * @param {any} entry  Config entry (id, url, where, fields, label, etc.)
+ * @returns {L.LayerGroup}
+ */
+function addContextCPAOverlayAsGeoJSON(map, entry) {
+  console.debug("Querying context CPAs as GeoJSON…", entry.url, entry.where);
+
+  /** Track per-feature Leaflet layers for tooltip updates */
+  const featureLayers = new Set();
+
+  /** Label text util mirroring our FeatureLayer variant */
+  function labelTextFor(props) {
+    const prop = entry.label?.prop || "cpname";
+    // CSV overrides
+    if (window.CPA_LABEL_OVERRIDES) {
+      const key = String(props?.[prop] ?? "").toUpperCase();
+      const override = window.CPA_LABEL_OVERRIDES[key];
+      if (override != null && override !== "") {
+        return String(override).replace(/\s*\|\s*/g, "\n");
+      }
+    }
+    return props?.[prop] ?? entry.name ?? null;
+  }
+
+  /** onEachFeature to add tooltips and register layers */
+  function onEach(feature, lyr) {
+    featureLayers.add(lyr);
+    if (entry.label) {
+      lyr.bindTooltip(labelTextFor(feature.properties) || "", {
+        permanent: true,
+        direction: "center",
+        className: "np-label-tooltip",
+        opacity: 1,
+      });
+    }
+  }
+
+  // Initial styles (light profile); adjusted later by applyContrastProfile()
+  const casing = L.geoJSON(null, {
+    style: {
+      color: "#ffffff",
+      weight: 4,
+      opacity: 0.5,
+      fillOpacity: 0,
+      lineJoin: "round",
+      lineCap: "round",
+    },
+    onEachFeature: onEach,
+  });
+  const stroke = L.geoJSON(null, {
+    style: {
+      color: "#1f2937",
+      weight: 2.25,
+      opacity: 1,
+      fillOpacity: 0,
+      lineJoin: "round",
+      lineCap: "round",
+    },
+    onEachFeature: onEach,
+  });
+
+  const group = L.layerGroup([casing, stroke]).addTo(map);
+
+  // Contrast profile switcher (called from the IIFE)
+  group.applyContrastProfile = function (profile) {
+    if (profile === "imagery") {
+      stroke.setStyle({ color: "#111827", weight: 3.0, opacity: 1, fillOpacity: 0 });
+      casing.setStyle({ color: "#ffffff", weight: 5, opacity: 0.95, fillOpacity: 0 });
+    } else {
+      stroke.setStyle({ color: "#1f2937", weight: 2.25, opacity: 1, fillOpacity: 0 });
+      casing.setStyle({ color: "#ffffff", weight: 4, opacity: 0.5, fillOpacity: 0 });
+    }
+  };
+
+  // Label refresh hook (called after CSV loads)
+  group.refreshLabels = function () {
+    featureLayers.forEach((lyr) => {
+      const props = lyr?.feature?.properties || {};
+      const text = labelTextFor(props) || "";
+      if (lyr.getTooltip()) {
+        lyr.setTooltipContent(text);
+        lyr.openTooltip();
+      }
+    });
+  };
+
+  // Fetch once via Esri query -> add to both layers (casing under, stroke over)
+  const q = L.esri
+    .query({ url: entry.url })
+    .where(entry.where ?? "1=1")
+    .fields(entry.fields ?? ["*"])
+    .returnGeometry(true)
+    .precision(8);
+  q.run((err, fc) => {
+    if (err) {
+      console.error("Context CPA query failed:", err);
+      return;
+    }
+    // Add the same feature set to both layers
+    casing.addData(fc);
+    stroke.addData(fc);
+
+    // Keep casing beneath stroke
+    if (casing.bringToBack) casing.bringToBack();
+    if (stroke.bringToFront) stroke.bringToFront();
+
+    // Fit bounds once if requested
+    if (entry.fitBounds) {
+      try {
+        const b = stroke.getBounds();
+        if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+      } catch (_e) {}
+    }
+  });
+
+  // Keep registry parity with the FeatureLayer path
+  OVERLAYS[entry.id] = group;
+  return group;
+}
 
 /* ============================================================================
  * Entry point: set up the map when the DOM is ready.
@@ -430,9 +586,12 @@ const RepoCredit = L.Control.extend({
   // Overlays from config (context first, then North Park)
   (layers?.overlays || []).forEach((entry) => {
     if (entry?.type === "featureServer") {
-      const group = addFeatureServerOverlay(map, entry);
+      const group =
+        entry.id === "cpas-context"
+          ? addContextCPAOverlayAsGeoJSON(map, entry) // <-- new path
+          : addFeatureServerOverlay(map, entry); // existing path (e.g., north-park)
+
       layerControl.addOverlay(group, entry.name || entry.id || "Overlay");
-      // ensure registry (in case helper was changed)
       if (entry.id && !OVERLAYS[entry.id]) OVERLAYS[entry.id] = group;
     }
   });
