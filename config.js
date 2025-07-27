@@ -22,6 +22,21 @@ window.APP_CONFIG = {
   layers: {
     overlays: [
       {
+        id: "cpas-context",
+        type: "featureServer",
+        url: "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0",
+        where: "cpname <> 'NORTH PARK'", // exclude NP so labels don’t duplicate
+        fields: ["objectid", "cpname"],
+        name: "All Community Plans (context)",
+        attribution: "Community Plans: SANDAG RDW",
+        // Muted symbology for context
+        style: { color: "#666666", weight: 1, fillOpacity: 0.03 },
+
+        // Label all other communities at higher zoom
+        label: { prop: "cpname", minZoom: 12 },
+        fitBounds: false, // don’t re-zoom when this loads; NP overlay handles that
+      },
+      {
         id: "north-park",
         type: "featureServer",
         url: "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0",
@@ -34,15 +49,7 @@ window.APP_CONFIG = {
         name: "North Park Boundary",
 
         // NEW: label config read by main.js
-        label: {
-          text: "North Park",
-          fontSize: "16px",
-          fontWeight: 700,
-          color: "#1e5e4e",
-          haloColor: "#ffffff",
-          haloWidthPx: 3,
-        },
-
+        label: { prop: "cpname" }, // or { text: "North Park" }
         fitBounds: true,
       },
     ],

@@ -56,35 +56,38 @@ function addLayerControl(map, baseLayers, overlays) {
 
 /**
  * Create and add an ArcGIS FeatureServer overlay from a config entry.
- * Uses a permanent Leaflet tooltip as the label (centered on the polygon).
+ * Labels: uses permanent Leaflet tooltips per feature.
+ * Supports entry.label.{prop, text, minZoom, skipValues} and entry.attribution.
  * @param {L.Map} map
  * @param {Object} entry
- * @returns {L.LayerGroup} A group containing the feature layer
+ * @returns {L.LayerGroup}
  */
 function addFeatureServerOverlay(map, entry) {
   console.debug("Creating FeatureLayer:", entry.name || entry.id, entry.url, entry.where);
+
+  // Keep a registry of created feature layers (polygons) for label management.
+  const featureLayers = new Set();
 
   const layer = L.esri.featureLayer({
     url: entry.url,
     where: entry.where ?? "1=1",
     fields: entry.fields ?? ["*"],
-    attribution: entry.attribution || undefined, // overlay-specific credit (optional)
+    attribution: entry.attribution || undefined,
     style: () => entry.style || { color: "#3388ff", weight: 2, fillOpacity: 0.1 },
     simplifyFactor: 0.5,
     precision: 5,
 
-    // Bind a permanent, centered tooltip per feature as it is created
+    // Called once per feature as it’s turned into a Leaflet layer.
     onEachFeature: function (feature, lyr) {
-      const name = feature?.properties?.cpname || entry.label?.text || entry.name || "North Park";
-
-      lyr
-        .bindTooltip(String(name), {
-          permanent: true,
-          direction: "center",
-          className: "np-label-tooltip",
-          opacity: 1,
-        })
-        .openTooltip();
+      featureLayers.add(lyr);
+      // Bind an empty tooltip now; content/visibility decided in updateLabels().
+      // (Binding once avoids rebinding churn on zoom.)
+      lyr.bindTooltip("", {
+        permanent: true,
+        direction: "center",
+        className: "np-label-tooltip",
+        opacity: 1,
+      });
     },
   });
 
@@ -95,9 +98,66 @@ function addFeatureServerOverlay(map, entry) {
     });
   }
 
-  // Fit to bounds after first load if enabled
+  // Group first so it’s available to closures below.
+  const layerGroup = L.layerGroup([layer]).addTo(map);
+
+  // ----- Label logic (no .eachLayer assumptions) -----
+  const labelCfg = entry.label || null;
+  const minZoomForLabels = labelCfg && labelCfg.minZoom != null ? Number(labelCfg.minZoom) : null;
+
+  function labelTextFor(feature) {
+    if (!labelCfg) return null;
+    if (labelCfg.prop && feature?.properties) {
+      const v = feature.properties[labelCfg.prop];
+      return v != null ? String(v) : null;
+    }
+    return labelCfg.text || entry.name || null;
+  }
+
+  function shouldSkip(feature) {
+    if (!labelCfg || !Array.isArray(labelCfg.skipValues) || !labelCfg.prop) return false;
+    const v = feature?.properties?.[labelCfg.prop];
+    return labelCfg.skipValues.includes(v);
+  }
+
+  function updateLabels() {
+    const zoomOK = minZoomForLabels == null || map.getZoom() >= minZoomForLabels;
+    featureLayers.forEach((lyr) => {
+      const feature = lyr?.feature;
+      if (!feature || shouldSkip(feature) || !zoomOK) {
+        // Hide label
+        if (lyr.getTooltip()) lyr.setTooltipContent(""), lyr.closeTooltip();
+        return;
+      }
+      const text = labelTextFor(feature);
+      if (!text) {
+        if (lyr.getTooltip()) lyr.setTooltipContent(""), lyr.closeTooltip();
+        return;
+      }
+      // Show/update label
+      if (lyr.getTooltip()) {
+        lyr.setTooltipContent(String(text));
+        lyr.openTooltip();
+      }
+    });
+  }
+  // ----- End label logic -----
+
   layer.once("load", () => {
     console.debug("FeatureLayer loaded:", entry.name || entry.id);
+
+    // Initialize labels if configured
+    if (labelCfg) {
+      updateLabels();
+      if (minZoomForLabels != null) {
+        map.on("zoomend", updateLabels);
+        // Optional: remove listener when toggled off
+        layerGroup.on("remove", () => map.off("zoomend", updateLabels));
+        layerGroup.on("add", updateLabels);
+      }
+    }
+
+    // Optional fit-to-bounds
     if (entry.fitBounds !== false) {
       try {
         const b = layer.getBounds();
@@ -108,11 +168,7 @@ function addFeatureServerOverlay(map, entry) {
     }
   });
 
-  // Return a group so the overlay toggles cleanly in the control
-  const group = L.layerGroup();
-  group.addLayer(layer);
-  group.addTo(map);
-  return group;
+  return layerGroup;
 }
 
 /**
