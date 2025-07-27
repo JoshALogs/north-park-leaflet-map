@@ -6,8 +6,23 @@
  * Notes:
  * - "overlays" can list any number of FeatureServer layers.
  * - For each overlay, provide a human-readable "name" for the layer control.
- * - "popup" is a function receiving properties; return safe HTML.
+ * - "popup" is an optional function receiving properties; return safe HTML.
+ *
+ * Types (for reference):
+ * @typedef {Object} OverlayEntry
+ * @property {string} id
+ * @property {'featureServer'} type
+ * @property {string} url
+ * @property {string} [where]
+ * @property {string[]} [fields]
+ * @property {{color:string, weight:number, opacity?:number, fillColor?:string, fillOpacity?:number}} [style]
+ * @property {{color:string, weight:number, opacity?:number}} [casing]
+ * @property {{prop?:string, text?:string, minZoom?:number, skipValues?:string[]}} [label]
+ * @property {string} [name]
+ * @property {string} [attribution]
+ * @property {boolean} [fitBounds=true]
  */
+
 window.APP_CONFIG = {
   map: {
     /** @type {[number, number]} Default map center [lat, lng] */
@@ -30,15 +45,22 @@ window.APP_CONFIG = {
         fields: ["objectid", "cpname"],
         name: "All Community Plans (context)",
         attribution: "Community Plans: SANDAG RDW",
-        // Base (light‑basemap) style — muted but legible
+
+        // Base (light-basemap) style — muted but legible
         style: { color: "#444444", weight: 1.5, opacity: 0.9, fillOpacity: 0 },
-        // NEW: thin white casing we can boost on imagery
+
+        // Thin white casing we can boost on imagery (see contrast profiles in main.js)
         casing: { color: "#ffffff", weight: 3, opacity: 0 }, // start off (light)
+
+        // Label all other CPAs by name when zoomed in (minZoom avoids clutter).
+        // CSV overrides (data/cpa-labels.csv) can replace text per CPA at runtime.
         label: { prop: "cpname", minZoom: 12 },
+
+        // North Park overlay handles fitBounds; context should not re-zoom.
         fitBounds: false,
       },
 
-      // North Park (draw above; add casing)
+      // North Park (draw above; emphasized with color and casing)
       {
         id: "north-park",
         type: "featureServer",
@@ -48,13 +70,20 @@ window.APP_CONFIG = {
         name: "North Park Boundary",
         attribution: "Community Plans: SANDAG RDW",
 
-        // Base (light‑basemap) style — strong dark stroke + subtle fill
+        // Base (light-basemap) style — strong dark blue stroke + subtle fill
         style: { color: "#08519c", weight: 3, opacity: 1, fillOpacity: 0.06, fillColor: "#08519c" },
-        // NEW: white casing underlay for contrast on imagery
+
+        // White casing underlay for contrast on imagery/dark basemaps
         casing: { color: "#ffffff", weight: 7, opacity: 1 },
 
+        // Always label North Park (from attribute)
         label: { prop: "cpname" },
+
+        // Fit the initial view to North Park after the layer loads
         fitBounds: true,
+
+        // Optional popup example (disabled by default):
+        // popup: (p) => `<strong>${p.cpname ?? "Community"}</strong>`
       },
     ],
   },

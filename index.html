@@ -3,11 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>North Park Map</title>
+    <title>North Park Planning Map</title>
+    <meta
+      name="description"
+      content="Interactive map of San Diego Community Plan Areas with emphasis on North Park."
+    />
 
-    <!-- Leaflet CSS (CDN) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-
+    <!-- CSS: Leaflet, MapLibre (for esri-leaflet-vector), then app styles -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -15,23 +19,18 @@
     <div
       id="map"
       tabindex="0"
-      aria-label="Interactive map of San Diego Community Plan Areas. Use arrow keys to pan and +/− to zoom."
+      aria-label="Interactive map of San Diego Community Plan Areas. Use arrow keys to pan and +/- to zoom."
     ></div>
 
-    <!-- Leaflet JS (CDN) -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <!-- JS: Leaflet core, Esri Leaflet, vector plugin, then app code -->
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script defer src="https://unpkg.com/esri-leaflet@3.0.11/dist/esri-leaflet.js"></script>
+    <script
+      defer
+      src="https://unpkg.com/esri-leaflet-vector@4/dist/esri-leaflet-vector.js"
+    ></script>
 
-    <!-- Esri Leaflet (for ArcGIS Feature/Map Services) -->
-    <script src="https://unpkg.com/esri-leaflet@3.0.11/dist/esri-leaflet.js"></script>
-
-    <script src="https://unpkg.com/esri-leaflet@3/dist/esri-leaflet.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" />
-    <script src="https://unpkg.com/esri-leaflet-vector@4/dist/esri-leaflet-vector.js"></script>
-
-    <!-- App configuration -->
-    <script src="config.js"></script>
-
-    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <script src="main.js"></script>
+    <script defer src="config.js"></script>
+    <script defer src="main.js"></script>
   </body>
 </html>
