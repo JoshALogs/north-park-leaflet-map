@@ -56,10 +56,10 @@ function addLayerControl(map, baseLayers, overlays) {
 
 /**
  * Create and add an ArcGIS FeatureServer overlay from a config entry.
- * Also creates a text label marker if entry.label is provided.
+ * Uses a permanent Leaflet tooltip as the label (centered on the polygon).
  * @param {L.Map} map
  * @param {Object} entry
- * @returns {L.LayerGroup} group containing the feature layer (and label if any)
+ * @returns {L.LayerGroup} A group containing the feature layer
  */
 function addFeatureServerOverlay(map, entry) {
   console.debug("Creating FeatureLayer:", entry.name || entry.id, entry.url, entry.where);
@@ -68,11 +68,12 @@ function addFeatureServerOverlay(map, entry) {
     url: entry.url,
     where: entry.where ?? "1=1",
     fields: entry.fields ?? ["*"],
+    attribution: entry.attribution || undefined, // overlay-specific credit (optional)
     style: () => entry.style || { color: "#3388ff", weight: 2, fillOpacity: 0.1 },
     simplifyFactor: 0.5,
     precision: 5,
 
-    // Bind a permanent, centered tooltip per feature as it’s created
+    // Bind a permanent, centered tooltip per feature as it is created
     onEachFeature: function (feature, lyr) {
       const name = feature?.properties?.cpname || entry.label?.text || entry.name || "North Park";
 
@@ -94,70 +95,9 @@ function addFeatureServerOverlay(map, entry) {
     });
   }
 
-  // Group so the boundary and its label toggle together
-  const group = L.layerGroup();
-
-  // Build the label once the layer has loaded
+  // Fit to bounds after first load if enabled
   layer.once("load", () => {
     console.debug("FeatureLayer loaded:", entry.name || entry.id);
-
-    if (entry.label) {
-      try {
-        // Compute a label point
-        let labelLatLng = null;
-
-        // Prefer a point inside the polygon if Turf is available
-        try {
-          if (typeof window !== "undefined" && window.turf) {
-            let done = false;
-            layer.eachLayer((featLayer) => {
-              if (done) return;
-              if (typeof featLayer.toGeoJSON === "function") {
-                const gj = featLayer.toGeoJSON();
-                const pt = window.turf.pointOnFeature(gj);
-                const c = pt?.geometry?.coordinates;
-                if (Array.isArray(c) && c.length >= 2) {
-                  labelLatLng = L.latLng(c[1], c[0]);
-                  done = true;
-                }
-              }
-            });
-          }
-        } catch (_e) {
-          // ignore and fall back
-        }
-
-        // Fallback: bounding box center
-        if (!labelLatLng) {
-          labelLatLng = layer.getBounds().getCenter();
-        }
-
-        const text = entry.label.text || entry.name || "";
-        const fontSize = entry.label.fontSize || "16px";
-        const fontWeight = entry.label.fontWeight || 700;
-        const color = entry.label.color || "#000000";
-        const haloColor = entry.label.haloColor || "#ffffff";
-        const haloWidthPx = Number(entry.label.haloWidthPx || 3);
-
-        const shadow = [
-          `-${haloWidthPx}px -${haloWidthPx}px 0 ${haloColor}`,
-          `${haloWidthPx}px -${haloWidthPx}px 0 ${haloColor}`,
-          `-${haloWidthPx}px ${haloWidthPx}px 0 ${haloColor}`,
-          `${haloWidthPx}px ${haloWidthPx}px 0 ${haloColor}`,
-        ].join(", ");
-
-        const html =
-          `<span class="map-label" ` +
-          `style="font-size:${fontSize};font-weight:${fontWeight};color:${color};text-shadow:${shadow};">` +
-          `${text}</span>`;
-
-        console.debug("Label marker added at:", labelLatLng.lat, labelLatLng.lng);
-      } catch (_e) {
-        // optional label; ignore failures
-      }
-    }
-
-    // Fit to bounds after first load if enabled
     if (entry.fitBounds !== false) {
       try {
         const b = layer.getBounds();
@@ -168,10 +108,27 @@ function addFeatureServerOverlay(map, entry) {
     }
   });
 
-  // Add both boundary and (empty-for-now) label group; label will populate post-load
+  // Return a group so the overlay toggles cleanly in the control
+  const group = L.layerGroup();
   group.addLayer(layer);
   group.addTo(map);
   return group;
+}
+
+/**
+ * Add a SANDAG imagery basemap from an ArcGIS ImageServer via Esri Leaflet.
+ * @param {L.Map} map - Target map.
+ * @param {string} url - ImageServer URL.
+ * @returns {L.esri.ImageMapLayer} The imagery layer (not added by default).
+ */
+function createSandagImageryBasemap(map, url) {
+  const imagery = L.esri.imageMapLayer({
+    url,
+    opacity: 1,
+    attribution: "Imagery: SANDAG (Nearmap 2023, 9 in)",
+  });
+  imagery.once("load", () => console.debug("Imagery basemap loaded:", url));
+  return imagery;
 }
 
 /**
@@ -195,11 +152,21 @@ function addFeatureServerOverlay(map, entry) {
   const map = initMap("map", mapCfg.center, mapCfg.zoom);
   const osm = addOsmBasemap(map);
 
+  // Create SANDAG imagery basemap (not added by default so OSM remains initial)
+  const sandagImagery = createSandagImageryBasemap(
+    map,
+    "https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer"
+  );
+
   if (attribution) {
     map.attributionControl.addAttribution(attribution);
   }
 
-  const baseLayers = { OpenStreetMap: osm };
+  const baseLayers = {
+    OpenStreetMap: osm,
+    "Imagery (SANDAG 2023 9in)": sandagImagery,
+  };
+
   const layerControl = addLayerControl(map, baseLayers, {});
 
   (layers?.overlays || []).forEach((entry) => {
