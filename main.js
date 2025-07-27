@@ -368,6 +368,23 @@ function addFeatureServerOverlay(map, entry) {
   return layerGroup;
 }
 
+/**
+ * Repo credit control shown separately from the attribution strip.
+ * Usage: new RepoCredit().addTo(map)
+ */
+const RepoCredit = L.Control.extend({
+  options: { position: "bottomleft" },
+  onAdd: function () {
+    const div = L.DomUtil.create("div", "np-repo-credit leaflet-control");
+    div.innerHTML =
+      '<a href="https://github.com/JoshALogs/north-park-leaflet-map" ' +
+      'target="_blank" rel="noopener" title="Open project repository">GitHub</a>';
+    // Prevent map drag/zoom on click
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  },
+});
+
 /* ============================================================================
  * Entry point: set up the map when the DOM is ready.
  * ========================================================================== */
@@ -385,6 +402,8 @@ function addFeatureServerOverlay(map, entry) {
 
   // Map & basemaps
   const map = initMap("map", mapCfg.center, mapCfg.zoom);
+
+  new RepoCredit().addTo(map); // developer credit
 
   const osm = addOsmBasemap(map); // default
   const lightGray = createEsriLightGrayBasemap();
