@@ -73,11 +73,18 @@ Built with Leaflet + Esri Leaflet using public SANDAG services.
 
 ## Data & attribution
 
-- Community Plan Areas: SANDAG RDW (FeatureServer)
-- Imagery: SANDAG 2023 Nearmap 9″ (ImageServer)
-- Reference: Esri Hybrid Reference (US) – Vector Tile Layer
-- Basemaps: OpenStreetMap; Esri Canvas Light/Dark
-  Attributions appear in the map control.
+- Community Plan Areas: [SANDAG RDW – Community_Plan_SD (FeatureServer)](https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0)
+- Imagery: [SANDAG 2023 Nearmap 9″ (ImageServer)](https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer)
+- Reference: [Esri “Hybrid Reference Layer (US Edition)” – Vector Tile Layer](https://www.arcgis.com/home/item.html?id=5447e9aef0684ec391ae9381725f7370)
+- Basemaps: [OpenStreetMap](https://www.openstreetmap.org/copyright); Esri Canvas Light Gray ([Base](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer), [Reference](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Reference/MapServer)); Esri Canvas Dark Gray ([Base](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer), [Reference](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer))
+
+Attributions appear in the map control.
+
+---
+
+## Notes
+
+- Portions of this project were assisted by generative AI. All code and content were reviewed and edited by the maintainers.
 
 ---
 
