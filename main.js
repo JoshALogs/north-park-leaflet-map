@@ -253,14 +253,16 @@ function addFeatureServerOverlay(map, entry) {
 }
 
 /**
- * Add a SANDAG imagery basemap from an ArcGIS ImageServer via Esri Leaflet.
- * @param {L.Map} map - Target map.
- * @param {string} url - ImageServer URL.
- * @returns {L.esri.ImageMapLayer} The imagery layer (not added by default).
+ * SANDAG Imagery in its own pane below the reference overlay.
  */
 function createSandagImageryBasemap(map, url) {
+  if (!map.getPane("imagery")) {
+    map.createPane("imagery");
+    map.getPane("imagery").style.zIndex = 300; // below ref(350) and overlays(400)
+  }
   const imagery = L.esri.imageMapLayer({
     url,
+    pane: "imagery",
     opacity: 1,
     attribution: "Imagery: SANDAG (Nearmap 2023, 9 in)",
   });
@@ -303,10 +305,35 @@ function createEsriDarkGrayBasemap() {
 }
 
 /**
+ * Esri reference overlays (raster tiles) for imagery: boundaries/places + transportation.
+ * Draw above imagery tiles, below your vector overlays and labels.
+ */
+function createEsriImageryReference(map) {
+  // Put these tiles in a dedicated pane between tiles (200) and overlays (400)
+  if (!map.getPane("ref")) {
+    map.createPane("ref");
+    map.getPane("ref").style.zIndex = 350; // above imagery(300), below overlays(400)
+  }
+
+  const places = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer",
+    pane: "ref",
+    attribution: "Esri Reference (Boundaries & Places, Transportation)",
+  });
+
+  const roads = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Transportation/MapServer",
+    pane: "ref",
+  });
+
+  return L.layerGroup([places, roads]);
+}
+
+/**
  * Entry point: set up the map when the DOM is ready.
  */
 (function bootstrap() {
-  // Find the config, whether it’s on window or as a global binding.
+  // Read config
   const CONFIG =
     (typeof window !== "undefined" && window.APP_CONFIG) ||
     (typeof APP_CONFIG !== "undefined" ? APP_CONFIG : null);
@@ -316,14 +343,13 @@ function createEsriDarkGrayBasemap() {
     return;
   }
 
-  console.debug("APP_CONFIG overlays:", CONFIG.layers?.overlays?.length ?? 0);
-
   const { map: mapCfg, layers, attribution } = CONFIG;
 
+  // Map
   const map = initMap("map", mapCfg.center, mapCfg.zoom);
 
-  // Basemaps
-  const osm = addOsmBasemap(map); // DEFAULT (leave added)
+  // --- Basemaps (OSM is default) ---
+  const osm = addOsmBasemap(map); // default added inside helper
   const lightGray = createEsriLightGrayBasemap(); // not added by default
   const darkGray = createEsriDarkGrayBasemap(); // not added by default
   const sandagImagery = createSandagImageryBasemap(
@@ -331,7 +357,7 @@ function createEsriDarkGrayBasemap() {
     "https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer"
   );
 
-  // Layers control
+  // Single baseLayers + control declaration (avoid duplicate const errors)
   const baseLayers = {
     OpenStreetMap: osm,
     "Light Gray Canvas": lightGray,
@@ -340,47 +366,46 @@ function createEsriDarkGrayBasemap() {
   };
   const layerControl = addLayerControl(map, baseLayers, {});
 
-  // Determine current contrast profile for overlays
-  function currentProfile() {
-    // Treat Dark Gray and Imagery as the same high‑contrast profile
-    if (map.hasLayer(sandagImagery) || map.hasLayer(darkGray)) return "imagery";
-    return "light";
+  // Global attribution (layer-specific attributions are set in their helpers)
+  if (attribution) map.attributionControl.addAttribution(attribution);
+
+  // --- Imagery reference overlay (raster) ---
+  const esriImageryRef = createEsriImageryReference(map); // draws in pane "ref" (z=350)
+
+  function syncImageryRefs() {
+    const imageryOn = map.hasLayer(sandagImagery);
+    if (imageryOn) {
+      if (!map.hasLayer(esriImageryRef)) esriImageryRef.addTo(map);
+    } else {
+      if (map.hasLayer(esriImageryRef)) esriImageryRef.removeFrom(map);
+    }
   }
 
+  // --- Contrast profiles for overlays (treat Dark + Imagery the same) ---
+  function currentProfile() {
+    return map.hasLayer(sandagImagery) || map.hasLayer(darkGray) ? "imagery" : "light";
+  }
   function applyProfileToAll(profile) {
     Object.values(OVERLAYS).forEach((g) => g?.applyContrastProfile?.(profile));
   }
 
-  applyProfileToAll(currentProfile());
-  map.on("baselayerchange", () => applyProfileToAll(currentProfile()));
-
+  // --- Overlays from config ---
   (layers?.overlays || []).forEach((entry) => {
-    if (entry.type === "featureServer") {
-      const lyr = addFeatureServerOverlay(map, entry);
-      layerControl.addOverlay(lyr, entry.name || entry.id || "Overlay");
+    if (entry?.type === "featureServer") {
+      const group = addFeatureServerOverlay(map, entry);
+      layerControl.addOverlay(group, entry.name || entry.id || "Overlay");
+      // Ensure registry is populated even if helper didn't set it
+      if (entry.id && !OVERLAYS[entry.id]) OVERLAYS[entry.id] = group;
     }
   });
 
-  // After overlays are added and OVERLAYS is populated:
-  fetch("data/cpa-labels.csv")
-    .then((r) => r.text())
-    .then((text) => {
-      const lines = text.trim().split(/\r?\n/);
-      const header = lines.shift() || "";
-      // Expect "CPNAME,Label" – split the rest at the first comma only
-      const map = {};
-      for (const line of lines) {
-        const m = line.match(/^(.*?),(.*)$/); // split at first comma
-        if (!m) continue;
-        const rawKey = m[1].trim();
-        const rawVal = m[2].trim();
-        if (!rawKey) continue;
-        map[rawKey.toUpperCase()] = rawVal;
-      }
-      window.CPA_LABEL_OVERRIDES = map;
-      // Refresh labels for the context overlay now that overrides are loaded
-      OVERLAYS["cpas-context"]?.refreshLabels?.();
-      console.debug("Loaded label overrides:", Object.keys(map).length);
-    })
-    .catch((e) => console.error("labels.csv load/parse failed:", e));
+  // Initial syncs
+  syncImageryRefs();
+  applyProfileToAll(currentProfile());
+
+  // React to basemap changes
+  map.on("baselayerchange", () => {
+    syncImageryRefs();
+    applyProfileToAll(currentProfile());
+  });
 })();
