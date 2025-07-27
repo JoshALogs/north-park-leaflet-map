@@ -188,6 +188,26 @@ function createSandagImageryBasemap(map, url) {
 }
 
 /**
+ * Create Esri Light Gray Canvas basemap (base + reference labels).
+ * Returns a single LayerGroup so the control can toggle it as one basemap.
+ * Docs: L.esri.tiledMapLayer for MapServer tiles; ImageMapLayer for imagery.
+ */
+function createEsriLightGrayBasemap() {
+  const base = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer",
+    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+  });
+
+  // Optional reference labels layer (places, boundaries)
+  const ref = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Reference/MapServer",
+  });
+
+  // Group them so they toggle together
+  return L.layerGroup([base, ref]);
+}
+
+/**
  * Entry point: set up the map when the DOM is ready.
  */
 (function bootstrap() {
@@ -206,19 +226,22 @@ function createSandagImageryBasemap(map, url) {
   const { map: mapCfg, layers, attribution } = CONFIG;
 
   const map = initMap("map", mapCfg.center, mapCfg.zoom);
-  const osm = addOsmBasemap(map);
 
-  // Create SANDAG imagery basemap (not added by default so OSM remains initial)
+  // Basemaps
+  const lightGray = createEsriLightGrayBasemap(); // new default
+  const osm = addOsmBasemap(map); // we’ll remove initial add in a sec
   const sandagImagery = createSandagImageryBasemap(
     map,
     "https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer"
   );
 
-  if (attribution) {
-    map.attributionControl.addAttribution(attribution);
-  }
+  // Make Light Gray the initial basemap
+  map.removeLayer(osm);
+  lightGray.addTo(map);
 
+  // Base layers for the control
   const baseLayers = {
+    "Light Gray Canvas": lightGray,
     OpenStreetMap: osm,
     "Imagery (SANDAG 2023 9in)": sandagImagery,
   };
