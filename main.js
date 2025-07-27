@@ -55,46 +55,6 @@ function addLayerControl(map, baseLayers, overlays) {
 }
 
 /**
- * Add the North Park boundary from SANDAG's Community_Plan_SD feature layer.
- * Source: https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0
- * Fields include cpname (display field). We'll filter cpname='NORTH PARK'.
- * @param {L.Map} map - Target map.
- * @returns {L.esri.FeatureLayer} The added feature layer.
- */
-function addNorthParkBoundaryFromSANDAG(map) {
-  const url =
-    "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0";
-  const where = "cpname = 'NORTH PARK'";
-
-  const layer = L.esri.featureLayer({
-    url,
-    where,
-    fields: ["cpname"], // request only what we need
-    style: () => ({ color: "#0066ff", weight: 2, fillOpacity: 0.1 }),
-    simplifyFactor: 0.5, // light server-side/generalization hints
-    precision: 5,
-  });
-
-  // Simple popup with plan name.
-  layer.bindPopup((feat) => {
-    const props = feat?.feature?.properties || {};
-    const name = props.cpname || "North Park";
-    return `<strong>${name}</strong>`;
-  });
-
-  // Fit to boundary once loaded.
-  layer.on("load", () => {
-    console.debug("FeatureLayer loaded:", entry.name || entry.id);
-  });
-
-  // Credit the data source.
-  map.attributionControl.addAttribution("Data: City of San Diego Planning Dept via SANDAG RDW");
-
-  layer.addTo(map);
-  return layer;
-}
-
-/**
  * Create and add an ArcGIS FeatureServer overlay from a config entry.
  * Reads url/where/fields/style/popup/fitBounds from the entry.
  * @param {L.Map} map - Target map.
@@ -126,7 +86,7 @@ function addFeatureServerOverlay(map, entry) {
     });
   }
 
-  layer.on("load", () => {
+  layer.once("load", () => {
     console.debug("FeatureLayer loaded:", entry.name || entry.id);
   });
 
