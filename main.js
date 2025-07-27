@@ -11,6 +11,9 @@
  * - Keep ASCII-only characters (use "x" not "×"; avoid nonstandard spaces).
  */
 
+// Registry of overlay groups by id, for runtime restyling
+const OVERLAYS = {};
+
 /**
  * Initialize a Leaflet map.
  * @param {string} containerId - DOM id of the map container.
@@ -19,12 +22,10 @@
  * @returns {L.Map} Leaflet map instance.
  */
 function initMap(containerId, center, zoom) {
-  // Explicit options aid future maintenance.
   const map = L.map(containerId, {
     zoomControl: true,
+    keyboard: true, // 2.1.1 Keyboard
   }).setView(center, zoom);
-
-  // Add a scale control for reference.
   L.control.scale().addTo(map);
   return map;
 }
@@ -56,8 +57,7 @@ function addLayerControl(map, baseLayers, overlays) {
 
 /**
  * Create and add an ArcGIS FeatureServer overlay from a config entry.
- * Labels: uses permanent Leaflet tooltips per feature.
- * Supports entry.label.{prop, text, minZoom, skipValues} and entry.attribution.
+ * Supports per-feature labels (entry.label.*) and optional stroke casing (entry.casing).
  * @param {L.Map} map
  * @param {Object} entry
  * @returns {L.LayerGroup}
@@ -65,8 +65,28 @@ function addLayerControl(map, baseLayers, overlays) {
 function addFeatureServerOverlay(map, entry) {
   console.debug("Creating FeatureLayer:", entry.name || entry.id, entry.url, entry.where);
 
-  // Keep a registry of created feature layers (polygons) for label management.
+  // Registry for feature layers (for label updates)
   const featureLayers = new Set();
+
+  // --- NEW: optional casing layer (underlay) for high-contrast outlines ---
+  let casingLayer = null;
+  if (entry.casing) {
+    casingLayer = L.esri.featureLayer({
+      url: entry.url,
+      where: entry.where ?? "1=1",
+      fields: entry.fields ?? ["*"],
+      attribution: entry.attribution || undefined,
+      style: () => ({
+        color: entry.casing.color || "#ffffff",
+        weight: entry.casing.weight != null ? Number(entry.casing.weight) : 7,
+        opacity: entry.casing.opacity != null ? Number(entry.casing.opacity) : 1,
+        fillOpacity: 0, // casing is stroke-only
+      }),
+      simplifyFactor: 0.5,
+      precision: 5,
+    });
+  }
+  // -----------------------------------------------------------------------
 
   const layer = L.esri.featureLayer({
     url: entry.url,
@@ -77,17 +97,17 @@ function addFeatureServerOverlay(map, entry) {
     simplifyFactor: 0.5,
     precision: 5,
 
-    // Called once per feature as it’s turned into a Leaflet layer.
+    // Track each created feature; bind empty tooltip now (content set in updateLabels)
     onEachFeature: function (feature, lyr) {
       featureLayers.add(lyr);
-      // Bind an empty tooltip now; content/visibility decided in updateLabels().
-      // (Binding once avoids rebinding churn on zoom.)
-      lyr.bindTooltip("", {
-        permanent: true,
-        direction: "center",
-        className: "np-label-tooltip",
-        opacity: 1,
-      });
+      if (entry.label) {
+        lyr.bindTooltip("", {
+          permanent: true,
+          direction: "center",
+          className: "np-label-tooltip",
+          opacity: 1,
+        });
+      }
     },
   });
 
@@ -98,10 +118,58 @@ function addFeatureServerOverlay(map, entry) {
     });
   }
 
-  // Group first so it’s available to closures below.
-  const layerGroup = L.layerGroup([layer]).addTo(map);
+  // Build a group so the overlay toggles cleanly
+  const layerGroup = L.layerGroup();
+  if (casingLayer) layerGroup.addLayer(casingLayer); // add casing first (under)
+  layerGroup.addLayer(layer);
+  layerGroup.addTo(map);
 
-  // ----- Label logic (no .eachLayer assumptions) -----
+  OVERLAYS[entry.id] = layerGroup;
+
+  /**
+   * Apply a contrast profile to this overlay.
+   * profile: 'light' | 'imagery'
+   */
+  layerGroup.applyContrastProfile = function (profile) {
+    // North Park emphasis
+    if (entry.id === "north-park") {
+      if (profile === "imagery") {
+        // imagery: slightly heavier + full white casing
+        layer.setStyle({
+          color: "#08519c",
+          weight: 4,
+          opacity: 1,
+          fillColor: "#08519c",
+          fillOpacity: 0.08,
+        });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 9, opacity: 1, fillOpacity: 0 });
+      } else {
+        // light tiles
+        layer.setStyle({
+          color: "#08519c",
+          weight: 3,
+          opacity: 1,
+          fillColor: "#08519c",
+          fillOpacity: 0.06,
+        });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 7, opacity: 1, fillOpacity: 0 });
+      }
+    }
+
+    // Context CPAs (make visible on imagery)
+    if (entry.id === "cpas-context") {
+      if (profile === "imagery") {
+        layer.setStyle({ color: "#222222", weight: 2.5, opacity: 1, fillOpacity: 0 });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 4, opacity: 0.9, fillOpacity: 0 });
+      } else {
+        // light
+        layer.setStyle({ color: "#444444", weight: 1.5, opacity: 0.9, fillOpacity: 0 });
+        casingLayer?.setStyle({ color: "#ffffff", weight: 3, opacity: 0, fillOpacity: 0 }); // hide casing on light
+      }
+    }
+  };
+
+  // ----- Label logic (same as your working version) -----
   const labelCfg = entry.label || null;
   const minZoomForLabels = labelCfg && labelCfg.minZoom != null ? Number(labelCfg.minZoom) : null;
 
@@ -113,19 +181,16 @@ function addFeatureServerOverlay(map, entry) {
     }
     return labelCfg.text || entry.name || null;
   }
-
   function shouldSkip(feature) {
     if (!labelCfg || !Array.isArray(labelCfg.skipValues) || !labelCfg.prop) return false;
     const v = feature?.properties?.[labelCfg.prop];
     return labelCfg.skipValues.includes(v);
   }
-
   function updateLabels() {
     const zoomOK = minZoomForLabels == null || map.getZoom() >= minZoomForLabels;
     featureLayers.forEach((lyr) => {
       const feature = lyr?.feature;
       if (!feature || shouldSkip(feature) || !zoomOK) {
-        // Hide label
         if (lyr.getTooltip()) lyr.setTooltipContent(""), lyr.closeTooltip();
         return;
       }
@@ -134,30 +199,32 @@ function addFeatureServerOverlay(map, entry) {
         if (lyr.getTooltip()) lyr.setTooltipContent(""), lyr.closeTooltip();
         return;
       }
-      // Show/update label
       if (lyr.getTooltip()) {
         lyr.setTooltipContent(String(text));
         lyr.openTooltip();
       }
     });
   }
-  // ----- End label logic -----
+  // -----------------------------------------------------
 
   layer.once("load", () => {
     console.debug("FeatureLayer loaded:", entry.name || entry.id);
 
-    // Initialize labels if configured
+    // Bring casing behind the main layer if present
+    if (casingLayer) {
+      // After first draw, ensure underlay order
+      casingLayer.bringToBack?.();
+    }
+
     if (labelCfg) {
       updateLabels();
       if (minZoomForLabels != null) {
         map.on("zoomend", updateLabels);
-        // Optional: remove listener when toggled off
         layerGroup.on("remove", () => map.off("zoomend", updateLabels));
         layerGroup.on("add", updateLabels);
       }
     }
 
-    // Optional fit-to-bounds
     if (entry.fitBounds !== false) {
       try {
         const b = layer.getBounds();
@@ -208,6 +275,20 @@ function createEsriLightGrayBasemap() {
 }
 
 /**
+ * Esri Dark Gray Canvas (base + reference labels) as a single basemap.
+ */
+function createEsriDarkGrayBasemap() {
+  const base = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer",
+    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+  });
+  const ref = L.esri.tiledMapLayer({
+    url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer",
+  });
+  return L.layerGroup([base, ref]);
+}
+
+/**
  * Entry point: set up the map when the DOM is ready.
  */
 (function bootstrap() {
@@ -228,25 +309,36 @@ function createEsriLightGrayBasemap() {
   const map = initMap("map", mapCfg.center, mapCfg.zoom);
 
   // Basemaps
-  const lightGray = createEsriLightGrayBasemap(); // new default
-  const osm = addOsmBasemap(map); // we’ll remove initial add in a sec
+  const osm = addOsmBasemap(map); // DEFAULT (leave added)
+  const lightGray = createEsriLightGrayBasemap(); // not added by default
+  const darkGray = createEsriDarkGrayBasemap(); // not added by default
   const sandagImagery = createSandagImageryBasemap(
     map,
     "https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer"
   );
 
-  // Make Light Gray the initial basemap
-  map.removeLayer(osm);
-  lightGray.addTo(map);
-
-  // Base layers for the control
+  // Layers control
   const baseLayers = {
-    "Light Gray Canvas": lightGray,
     OpenStreetMap: osm,
+    "Light Gray Canvas": lightGray,
+    "Dark Gray Canvas": darkGray,
     "Imagery (SANDAG 2023 9in)": sandagImagery,
   };
-
   const layerControl = addLayerControl(map, baseLayers, {});
+
+  // Determine current contrast profile for overlays
+  function currentProfile() {
+    // Treat Dark Gray and Imagery as the same high‑contrast profile
+    if (map.hasLayer(sandagImagery) || map.hasLayer(darkGray)) return "imagery";
+    return "light";
+  }
+
+  function applyProfileToAll(profile) {
+    Object.values(OVERLAYS).forEach((g) => g?.applyContrastProfile?.(profile));
+  }
+
+  applyProfileToAll(currentProfile());
+  map.on("baselayerchange", () => applyProfileToAll(currentProfile()));
 
   (layers?.overlays || []).forEach((entry) => {
     if (entry.type === "featureServer") {

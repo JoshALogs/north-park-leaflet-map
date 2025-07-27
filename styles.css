@@ -10,22 +10,34 @@ body {
   width: 100%;
 }
 
-/* Permanent polygon label (Leaflet tooltip) */
+/* Accessible pill-style label for all basemaps */
 .leaflet-tooltip.np-label-tooltip {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  padding: 0;
+  /* container: solid white to guarantee contrast */
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 
+  /* text */
+  color: #111111; /* high contrast vs #fff (>> 4.5:1) */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell,
     "Helvetica Neue", Arial, sans-serif;
   font-weight: 700;
-  font-size: 16px;
-  line-height: 1;
-  color: #1e5e4e;
-
-  text-shadow: -2px -2px 0 #ffffff, 2px -2px 0 #ffffff, -2px 2px 0 #ffffff, 2px 2px 0 #ffffff;
+  font-size: 16px; /* raise to 19px (bold) to qualify as 'large text' if desired */
+  line-height: 1.1;
+  letter-spacing: 0.2px;
 
   pointer-events: none;
   white-space: nowrap;
+
+  /* remove outline/halo tricks */
+  text-shadow: none;
+  -webkit-text-stroke: 0;
+}
+
+/* Visible focus ring (2.4.7) when map container is focused */
+#map:focus {
+  outline: 3px solid #111;
+  outline-offset: 2px;
 }
