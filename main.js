@@ -119,7 +119,7 @@ function addFeatureServerOverlay(map, entry) {
   }
 
   // Build a group so the overlay toggles cleanly
-  const layerGroup = L.layerGroup();
+  const layerGroup = L.layerGroup([layer]).addTo(map);
   if (casingLayer) layerGroup.addLayer(casingLayer); // add casing first (under)
   layerGroup.addLayer(layer);
   layerGroup.addTo(map);
@@ -173,13 +173,25 @@ function addFeatureServerOverlay(map, entry) {
   const labelCfg = entry.label || null;
   const minZoomForLabels = labelCfg && labelCfg.minZoom != null ? Number(labelCfg.minZoom) : null;
 
+  // entry.label.prop should be "cpname" for both overlays
   function labelTextFor(feature) {
-    if (!labelCfg) return null;
-    if (labelCfg.prop && feature?.properties) {
-      const v = feature.properties[labelCfg.prop];
-      return v != null ? String(v) : null;
+    const prop = (entry.label && entry.label.prop) || "cpname";
+    const fp = feature?.properties || {};
+
+    // 1) Use CSV overrides for the context layer only
+    if (entry.id === "cpas-context" && window.CPA_LABEL_OVERRIDES) {
+      const key = String(fp[prop] ?? "").toUpperCase();
+      const override = window.CPA_LABEL_OVERRIDES[key];
+      if (override != null && override !== "") {
+        // Support multi-line via '|' in CSV -> convert to \n (CSS uses pre-line)
+        return String(override).replace(/\s*\|\s*/g, "\n");
+      }
     }
-    return labelCfg.text || entry.name || null;
+
+    // 2) Fallbacks
+    if (entry.label?.prop && fp[prop] != null) return String(fp[prop]);
+    if (entry.label?.text) return String(entry.label.text);
+    return entry.name || null;
   }
   function shouldSkip(feature) {
     if (!labelCfg || !Array.isArray(labelCfg.skipValues) || !labelCfg.prop) return false;
@@ -205,6 +217,8 @@ function addFeatureServerOverlay(map, entry) {
       }
     });
   }
+  layerGroup.refreshLabels = updateLabels;
+
   // -----------------------------------------------------
 
   layer.once("load", () => {
@@ -346,4 +360,27 @@ function createEsriDarkGrayBasemap() {
       layerControl.addOverlay(lyr, entry.name || entry.id || "Overlay");
     }
   });
+
+  // After overlays are added and OVERLAYS is populated:
+  fetch("data/cpa-labels.csv")
+    .then((r) => r.text())
+    .then((text) => {
+      const lines = text.trim().split(/\r?\n/);
+      const header = lines.shift() || "";
+      // Expect "CPNAME,Label" – split the rest at the first comma only
+      const map = {};
+      for (const line of lines) {
+        const m = line.match(/^(.*?),(.*)$/); // split at first comma
+        if (!m) continue;
+        const rawKey = m[1].trim();
+        const rawVal = m[2].trim();
+        if (!rawKey) continue;
+        map[rawKey.toUpperCase()] = rawVal;
+      }
+      window.CPA_LABEL_OVERRIDES = map;
+      // Refresh labels for the context overlay now that overrides are loaded
+      OVERLAYS["cpas-context"]?.refreshLabels?.();
+      console.debug("Loaded label overrides:", Object.keys(map).length);
+    })
+    .catch((e) => console.error("labels.csv load/parse failed:", e));
 })();

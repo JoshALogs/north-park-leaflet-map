@@ -12,7 +12,7 @@ body {
 
 /* Accessible pill-style label for all basemaps */
 .leaflet-tooltip.np-label-tooltip {
-  /* container: solid white to guarantee contrast */
+  /* pill container (keep your existing values if different) */
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.25);
   border-radius: 4px;
@@ -20,20 +20,21 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 
   /* text */
-  color: #111111; /* high contrast vs #fff (>> 4.5:1) */
+  color: #111111;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", Ubuntu, Cantarell,
     "Helvetica Neue", Arial, sans-serif;
   font-weight: 700;
-  font-size: 16px; /* raise to 19px (bold) to qualify as 'large text' if desired */
-  line-height: 1.1;
+  font-size: 16px;
+  line-height: 1.2;
   letter-spacing: 0.2px;
 
-  pointer-events: none;
-  white-space: nowrap;
+  /* center + multiline support */
+  text-align: center;
+  white-space: pre-line; /* honors \n from CSV; no forced wrapping */
+  max-width: none; /* prevent Leaflet’s default 300px wrap */
 
-  /* remove outline/halo tricks */
-  text-shadow: none;
-  -webkit-text-stroke: 0;
+  /* behavior */
+  pointer-events: none;
 }
 
 /* Visible focus ring (2.4.7) when map container is focused */
