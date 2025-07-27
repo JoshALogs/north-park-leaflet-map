@@ -305,28 +305,22 @@ function createEsriDarkGrayBasemap() {
 }
 
 /**
- * Esri reference overlays (raster tiles) for imagery: boundaries/places + transportation.
- * Draw above imagery tiles, below your vector overlays and labels.
+ * Hybrid Reference Layer (US Edition) as a Vector Tile overlay.
+ * Drawn in pane "ref" so it sits above imagery (pane "imagery") but below overlays/labels.
+ * AGOL item id: 5447e9aef0684ec391ae9381725f7370
  */
-function createEsriImageryReference(map) {
-  // Put these tiles in a dedicated pane between tiles (200) and overlays (400)
+function createEsriImageryVectorReference(map) {
   if (!map.getPane("ref")) {
     map.createPane("ref");
-    map.getPane("ref").style.zIndex = 350; // above imagery(300), below overlays(400)
+    map.getPane("ref").style.zIndex = 350; // tile(200) < imagery(300) < ref(350) < overlays(400) < tooltips(650)
   }
-
-  const places = L.esri.tiledMapLayer({
-    url: "https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Boundaries_and_Places/MapServer",
-    pane: "ref",
-    attribution: "Esri Reference (Boundaries & Places, Transportation)",
-  });
-
-  const roads = L.esri.tiledMapLayer({
-    url: "https://services.arcgisonline.com/arcgis/rest/services/Reference/World_Transportation/MapServer",
+  const vt = L.esri.Vector.vectorTileLayer("5447e9aef0684ec391ae9381725f7370", {
+    portalUrl: "https://www.arcgis.com",
     pane: "ref",
   });
-
-  return L.layerGroup([places, roads]);
+  vt.on("load", () => console.debug("Vector imagery reference loaded."));
+  vt.on("error", (e) => console.warn("Vector imagery reference error:", e));
+  return vt;
 }
 
 /**
@@ -365,21 +359,24 @@ function createEsriImageryReference(map) {
     "Imagery (SANDAG 2023 9in)": sandagImagery,
   };
   const layerControl = addLayerControl(map, baseLayers, {});
+  const imageryVectorRef = createEsriImageryVectorReference(map);
 
   // Global attribution (layer-specific attributions are set in their helpers)
   if (attribution) map.attributionControl.addAttribution(attribution);
 
-  // --- Imagery reference overlay (raster) ---
-  const esriImageryRef = createEsriImageryReference(map); // draws in pane "ref" (z=350)
-
   function syncImageryRefs() {
     const imageryOn = map.hasLayer(sandagImagery);
     if (imageryOn) {
-      if (!map.hasLayer(esriImageryRef)) esriImageryRef.addTo(map);
+      if (!map.hasLayer(imageryVectorRef)) imageryVectorRef.addTo(map);
     } else {
-      if (map.hasLayer(esriImageryRef)) esriImageryRef.removeFrom(map);
+      if (map.hasLayer(imageryVectorRef)) imageryVectorRef.removeFrom(map);
     }
   }
+  syncImageryRefs();
+  map.on("baselayerchange", () => {
+    syncImageryRefs();
+    applyProfileToAll(currentProfile());
+  });
 
   // --- Contrast profiles for overlays (treat Dark + Imagery the same) ---
   function currentProfile() {
