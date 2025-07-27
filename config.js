@@ -27,11 +27,22 @@ window.APP_CONFIG = {
         url: "https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0",
         where: "cpname = 'NORTH PARK'",
         fields: ["objectid", "cpname"],
+
+        // NPPC green and a slightly thicker stroke
+        style: { color: "#1e5e4e", weight: 3, fillOpacity: 0.12 },
+
         name: "North Park Boundary",
-        style: { color: "#0066ff", weight: 2, fillOpacity: 0.1 },
-        /** @param {Record<string, any>} props */
-        popup: (props) => `<strong>${props.cpname || "North Park"}</strong>`,
-        /** Fit map to bounds after first load (set false to skip) */
+
+        // NEW: label config read by main.js
+        label: {
+          text: "North Park",
+          fontSize: "16px",
+          fontWeight: 700,
+          color: "#1e5e4e",
+          haloColor: "#ffffff",
+          haloWidthPx: 3,
+        },
+
         fitBounds: true,
       },
     ],

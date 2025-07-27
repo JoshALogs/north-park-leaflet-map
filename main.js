@@ -56,16 +56,10 @@ function addLayerControl(map, baseLayers, overlays) {
 
 /**
  * Create and add an ArcGIS FeatureServer overlay from a config entry.
- * Reads url/where/fields/style/popup/fitBounds from the entry.
- * @param {L.Map} map - Target map.
- * @param {Object} entry - Overlay config.
- * @param {string} entry.url - FeatureServer layer URL.
- * @param {string} [entry.where="1=1"] - WHERE clause.
- * @param {string[]} [entry.fields=["*"]] - Fields to request.
- * @param {Object} [entry.style] - Leaflet Path style.
- * @param {(props:Object)=>string} [entry.popup] - Popup HTML renderer.
- * @param {boolean} [entry.fitBounds=true] - Fit to bounds on first load.
- * @returns {L.esri.FeatureLayer} The created and added layer.
+ * Also creates a text label marker if entry.label is provided.
+ * @param {L.Map} map
+ * @param {Object} entry
+ * @returns {L.LayerGroup} group containing the feature layer (and label if any)
  */
 function addFeatureServerOverlay(map, entry) {
   console.debug("Creating FeatureLayer:", entry.name || entry.id, entry.url, entry.where);
@@ -77,6 +71,20 @@ function addFeatureServerOverlay(map, entry) {
     style: () => entry.style || { color: "#3388ff", weight: 2, fillOpacity: 0.1 },
     simplifyFactor: 0.5,
     precision: 5,
+
+    // Bind a permanent, centered tooltip per feature as it’s created
+    onEachFeature: function (feature, lyr) {
+      const name = feature?.properties?.cpname || entry.label?.text || entry.name || "North Park";
+
+      lyr
+        .bindTooltip(String(name), {
+          permanent: true,
+          direction: "center",
+          className: "np-label-tooltip",
+          opacity: 1,
+        })
+        .openTooltip();
+    },
   });
 
   if (typeof entry.popup === "function") {
@@ -86,25 +94,84 @@ function addFeatureServerOverlay(map, entry) {
     });
   }
 
+  // Group so the boundary and its label toggle together
+  const group = L.layerGroup();
+
+  // Build the label once the layer has loaded
   layer.once("load", () => {
     console.debug("FeatureLayer loaded:", entry.name || entry.id);
-  });
 
-  layer.on("error", (e) => console.error("FeatureLayer error:", e));
+    if (entry.label) {
+      try {
+        // Compute a label point
+        let labelLatLng = null;
 
-  if (entry.fitBounds !== false) {
-    layer.once("load", () => {
+        // Prefer a point inside the polygon if Turf is available
+        try {
+          if (typeof window !== "undefined" && window.turf) {
+            let done = false;
+            layer.eachLayer((featLayer) => {
+              if (done) return;
+              if (typeof featLayer.toGeoJSON === "function") {
+                const gj = featLayer.toGeoJSON();
+                const pt = window.turf.pointOnFeature(gj);
+                const c = pt?.geometry?.coordinates;
+                if (Array.isArray(c) && c.length >= 2) {
+                  labelLatLng = L.latLng(c[1], c[0]);
+                  done = true;
+                }
+              }
+            });
+          }
+        } catch (_e) {
+          // ignore and fall back
+        }
+
+        // Fallback: bounding box center
+        if (!labelLatLng) {
+          labelLatLng = layer.getBounds().getCenter();
+        }
+
+        const text = entry.label.text || entry.name || "";
+        const fontSize = entry.label.fontSize || "16px";
+        const fontWeight = entry.label.fontWeight || 700;
+        const color = entry.label.color || "#000000";
+        const haloColor = entry.label.haloColor || "#ffffff";
+        const haloWidthPx = Number(entry.label.haloWidthPx || 3);
+
+        const shadow = [
+          `-${haloWidthPx}px -${haloWidthPx}px 0 ${haloColor}`,
+          `${haloWidthPx}px -${haloWidthPx}px 0 ${haloColor}`,
+          `-${haloWidthPx}px ${haloWidthPx}px 0 ${haloColor}`,
+          `${haloWidthPx}px ${haloWidthPx}px 0 ${haloColor}`,
+        ].join(", ");
+
+        const html =
+          `<span class="map-label" ` +
+          `style="font-size:${fontSize};font-weight:${fontWeight};color:${color};text-shadow:${shadow};">` +
+          `${text}</span>`;
+
+        console.debug("Label marker added at:", labelLatLng.lat, labelLatLng.lng);
+      } catch (_e) {
+        // optional label; ignore failures
+      }
+    }
+
+    // Fit to bounds after first load if enabled
+    if (entry.fitBounds !== false) {
       try {
         const b = layer.getBounds();
         if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
       } catch (_e) {
         /* no-op */
       }
-    });
-  }
+    }
+  });
 
-  layer.addTo(map);
-  return layer;
+  // Add both boundary and (empty-for-now) label group; label will populate post-load
+  group.addLayer(layer);
+  group.addTo(map);
+  return group;
 }
 
 /**
