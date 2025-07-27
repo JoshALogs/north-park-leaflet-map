@@ -70,13 +70,23 @@ function addLayerControl(map, baseLayers, overlays) {
  * @returns {L.LayerGroup}
  */
 function createEsriLightGrayBasemap() {
+  const opts = {
+    // Prevent requests past native LOD; still allow zoom UI beyond that
+    maxNativeZoom: 16,
+    maxZoom: 20,
+    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+  };
+
   const base = L.esri.tiledMapLayer({
     url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer",
-    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+    ...opts,
   });
+
   const ref = L.esri.tiledMapLayer({
     url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Reference/MapServer",
+    ...opts,
   });
+
   return L.layerGroup([base, ref]);
 }
 
@@ -85,13 +95,22 @@ function createEsriLightGrayBasemap() {
  * @returns {L.LayerGroup}
  */
 function createEsriDarkGrayBasemap() {
+  const opts = {
+    maxNativeZoom: 16,
+    maxZoom: 20,
+    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+  };
+
   const base = L.esri.tiledMapLayer({
     url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer",
-    attribution: "Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors",
+    ...opts,
   });
+
   const ref = L.esri.tiledMapLayer({
     url: "https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer",
+    ...opts,
   });
+
   return L.layerGroup([base, ref]);
 }
 
