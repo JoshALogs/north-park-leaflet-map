@@ -54,31 +54,14 @@ Built with Leaflet + Esri Leaflet using public SANDAG services.
 </iframe>
 ```
 
-**Notes**
-
-- Adjust size or `max-width` as needed; the map is responsive inside the iframe.
-- Use HTTPS on your site; most CMSes allow iframes from GitHub Pages.
-- If iframes are blocked, link to the live map instead.
-
 ---
 
-## Where to change things
-
-- **Layer/data config:** `config.js` (overlays, styling, labels on/off, fit-to-bounds).
-- **Label names:** `data/cpa-labels.csv` (`CPNAME,Label`; use `|` for line breaks).
-- **Styles:** `styles.css` (label pill, focus ring, layout).
-- **Map logic:** `main.js` (basemaps, imagery reference, contrast profiles).
-
----
-
-## Data & attribution
+## Data
 
 - Community Plan Areas: [SANDAG RDW – Community_Plan_SD (FeatureServer)](https://geo.sandag.org/server/rest/services/Hosted/Community_Plan_SD/FeatureServer/0)
 - Imagery: [SANDAG 2023 Nearmap 9″ (ImageServer)](https://gis.sandag.org/sdgis/rest/services/Imagery/SD2023_9inch/ImageServer)
 - Reference: [Esri “Hybrid Reference Layer (US Edition)” – Vector Tile Layer](https://www.arcgis.com/home/item.html?id=5447e9aef0684ec391ae9381725f7370)
 - Basemaps: [OpenStreetMap](https://www.openstreetmap.org/copyright); Esri Canvas Light Gray ([Base](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Base/MapServer), [Reference](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Light_Gray_Reference/MapServer)); Esri Canvas Dark Gray ([Base](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer), [Reference](https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Reference/MapServer))
-
-Attributions appear in the map control.
 
 ---
 
